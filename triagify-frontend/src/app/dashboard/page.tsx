@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ClipboardList, CalendarDays, Loader2, AlertTriangle } from 'lucide-react';
+import { ClipboardList, CheckCircle, Loader2, AlertTriangle, Check } from 'lucide-react';
 
 // Tipos para os dados
 interface PendingScreening {
@@ -27,34 +27,44 @@ const StatCard = ({ title, value, icon, color }) => (
 );
 
 export default function DashboardPage() {
+    const [reviewedTodayCount, setReviewedTodayCount] = useState<number>(0);
     const [pendingScreenings, setPendingScreenings] = useState<PendingScreening[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchPendingScreenings = async () => {
+        const fetchData = async () => {
             try {
                 const token = localStorage.getItem('triagify-token');
                 if (!token) throw new Error('Utilizador não autenticado.');
 
-                // Chama a nova rota otimizada
-                const response = await fetch('http://localhost:3001/api/screenings/pending-review', {
-                    headers: { 'Authorization': `Bearer ${token}` },
-                });
+                const [pendingResponse, reviewedResponse] = await Promise.all([
+                    fetch('http://localhost:3001/api/screenings/pending-review', {
+                        headers: { 'Authorization': `Bearer ${token}` },
+                    }),
+                    fetch('http://localhost:3001/api/screenings/reviewed-today-count', {
+                        headers: { 'Authorization': `Bearer ${token}` },
+                    })
+                ]);
 
-                if (!response.ok) throw new Error('Falha ao buscar as triagens pendentes.');
-                
-                const data = await response.json();
-                setPendingScreenings(data);
+                if (!pendingResponse.ok) throw new Error('Falha ao buscar as triagens pendentes.');
+                if (!reviewedResponse.ok) throw new Error('Falha ao buscar a contagem de triagens analisadas.');
+
+                const pendingData = await pendingResponse.json();
+                const reviewedData = await reviewedResponse.json();
+
+                setPendingScreenings(pendingData);
+                setReviewedTodayCount(reviewedData.count); // Assumindo que a resposta seja { count: X }
             } catch (err) {
-                setError(err instanceof Error ? err.message : 'Erro desconhecido');
+                const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+                setError(errorMessage);
             } finally {
                 setIsLoading(false);
             }
         };
-
-        fetchPendingScreenings();
+        fetchData();
     }, []);
+
 
     return (
         <div>
@@ -62,7 +72,12 @@ export default function DashboardPage() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                 <StatCard title="Triagens para Analisar" value={pendingScreenings.length} icon={<ClipboardList size={24}/>} color="bg-[#02bca5]" />
-                <StatCard title="Consultas Hoje" value="7" icon={<CalendarDays size={24}/>} color="bg-[#02bca5]" />
+                <StatCard 
+                    title="Triagens Analisadas (Hoje)" 
+                    value={isLoading ? '...' : reviewedTodayCount} 
+                    icon={<CheckCircle size={24}/>} 
+                    color="bg-[#02bca5]" // Cor alterada para indicar sucesso/conclusão
+                />
             </div>
 
             <h2 className="text-2xl font-bold text-gray-800 mb-4">Triagens Pendentes de Análise</h2>

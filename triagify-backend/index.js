@@ -11,6 +11,7 @@ const verifyToken = require('./authMiddleware');
 const verifyAdmin = require('./adminMiddleware');
 const { setupEmailService, sendNewScreeningAvailableNotification, sendPasswordResetEmail } = require('./emailService');
 const crypto = require('crypto');
+const { analyzeExamDocument } = require('./analysisService');
 
 // 2. Inicializar as ferramentas
 const app = express();
@@ -24,11 +25,11 @@ app.use(express.json());
 // 4. Configurar o Multer
 const uploadDir = 'uploads/';
 if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir); }
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
+const storage = multer.memoryStorage(); // Muda para armazenamento em memória
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
-const upload = multer({ storage: storage });
 
 // --- ROTAS PÚBLICAS ---
 app.post('/register', async (req, res) => {
@@ -217,16 +218,56 @@ app.post('/api/screening/:id/answers', verifyToken, async (req, res) => {
 app.post('/api/screenings/:id/upload-exam', verifyToken, upload.single('examFile'), async (req, res) => {
     const screeningId = req.params.id;
     const patientId = req.user.userId;
-    if (!req.file) return res.status(400).json({ message: 'Nenhum ficheiro enviado.' });
+
+    if (!req.file) {
+        return res.status(400).json({ message: 'Nenhum ficheiro enviado.' });
+    }
+
     try {
-        const screening = await prisma.screenings.findFirst({ where: { id: screeningId, patientId: patientId } });
+        // 1. Confirma se a triagem pertence ao paciente
+        const screening = await prisma.screenings.findFirst({
+            where: { id: screeningId, patientId: patientId },
+        });
+
         if (!screening) {
-            fs.unlinkSync(req.file.path);
+            // Não há arquivo para apagar, pois ele está apenas na memória
             return res.status(404).json({ message: 'Triagem não encontrada.' });
         }
-        const examFile = await prisma.examFile.create({ data: { originalName: req.file.originalname, filePath: req.file.path, fileType: req.file.mimetype, screeningId: screeningId } });
-        res.status(201).json({ message: 'Ficheiro enviado com sucesso!', file: examFile });
-    } catch (error) { console.error("Erro no upload do ficheiro:", error); res.status(500).json({ message: 'Erro interno.' }); }
+
+        // 2. Chama o serviço de IA para analisar o buffer do arquivo
+        console.log(`Iniciando análise de IA para o arquivo: ${req.file.originalname}`);
+        const summaryParagraph = await analyzeExamDocument(req.file.buffer, req.file.mimetype);
+
+        if (!summaryParagraph) {
+            return res.status(400).json({ message: 'Não foi possível extrair um resumo do exame.' });
+        }
+
+        // 3. Salva o parágrafo de resumo diretamente na triagem
+        // Esta lógica anexa novos resumos aos existentes, caso o paciente envie mais de um exame.
+        const newSummary = screening.examSummary
+            ? `${screening.examSummary}\n\n--- Resumo do Exame (${req.file.originalname}) ---\n${summaryParagraph}`
+            : `--- Resumo do Exame (${req.file.originalname}) ---\n${summaryParagraph}`;
+
+        await prisma.screenings.update({
+            where: { id: screeningId },
+            data: {
+                examSummary: newSummary
+            },
+        });
+
+        console.log(`Resumo do exame salvo com sucesso para a triagem ${screeningId}.`);
+
+        // 4. Responde ao frontend com sucesso
+        // Note que não criamos mais um registro de 'ExamFile', como solicitado.
+        res.status(201).json({
+            message: 'Exame analisado e resumo salvo com sucesso!',
+            summary: summaryParagraph,
+        });
+
+    } catch (error) {
+        console.error("Erro no processamento do exame com IA:", error);
+        res.status(500).json({ message: 'Erro interno no servidor ao processar o exame.' });
+    }
 });
 
 app.get('/api/screenings/pending-review', verifyToken, async (req, res) => {
@@ -238,6 +279,33 @@ app.get('/api/screenings/pending-review', verifyToken, async (req, res) => {
         const pendingScreenings = await prisma.screenings.findMany({ where: { status: 'COMPLETED', patientId: { in: associatedPatientIds } }, include: { patient: { select: { fullName: true } } }, orderBy: { updatedAt: 'desc' } });
         res.status(200).json(pendingScreenings);
     } catch (error) { console.error("Erro ao buscar triagens pendentes:", error); res.status(500).json({ message: 'Erro interno.' }); }
+});
+
+app.get('/api/screenings/reviewed-today-count', verifyToken, async (req, res) => {
+    const doctorId = req.user.userId;
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Define o início do dia de hoje
+
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1); // Define o início do dia de amanhã
+
+        const count = await prisma.screenings.count({
+            where: {
+                doctorId: doctorId,
+                status: 'REVIEWED',
+                updatedAt: {
+                    gte: today,
+                    lt: tomorrow,
+                },
+            },
+        });
+
+        res.status(200).json({ count });
+    } catch (error) {
+        console.error("Erro ao contar triagens analisadas hoje:", error);
+        res.status(500).json({ message: 'Erro interno no servidor.' });
+    }
 });
 
 app.get('/api/screenings/:id', verifyToken, async (req, res) => {

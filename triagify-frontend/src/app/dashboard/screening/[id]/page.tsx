@@ -2,22 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Loader2, AlertTriangle, User, Mail, ArrowLeft, CheckCircle, Paperclip } from 'lucide-react';
+import { Loader2, AlertTriangle, User, Mail, ArrowLeft, CheckCircle, Paperclip, BrainCircuit } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-// Interfaces para tipagem dos dados
 interface Answer {
   value: string;
   question: {
     text: string;
     category: string;
   };
-}
-
-interface ExamFile {
-  id: string;
-  originalName: string;
-  filePath: string;
 }
 
 interface ScreeningDetails {
@@ -29,7 +22,7 @@ interface ScreeningDetails {
     email: string;
   };
   answers: Answer[];
-  examFiles: ExamFile[];
+  examSummary: string | null;
 }
 
 export default function ScreeningAnalysisPage() {
@@ -52,7 +45,7 @@ export default function ScreeningAnalysisPage() {
         const token = localStorage.getItem('triagify-token');
         if (!token) throw new Error('Utilizador não autenticado.');
 
-        const response = await fetch(`http://localhost:3001/api/screenings/${screeningId}`, {
+         const response = await fetch(`http://localhost:3001/api/screenings/${screeningId}`, {
           headers: { 'Authorization': `Bearer ${token}` },
         });
 
@@ -159,24 +152,18 @@ export default function ScreeningAnalysisPage() {
             </div>
         ))}
 
-        {screening.examFiles.length > 0 && (
+        {screening.examSummary && (
           <div className="mb-8">
-            <h2 className="text-2xl font-semibold text-blue-600 border-b-2 border-blue-200 pb-2 mb-6">Exames Anexados</h2>
-            <ul className="space-y-3">
-              {screening.examFiles.map(file => (
-                <li key={file.id}>
-                  <a 
-                    href={`http://localhost:3001/${file.filePath}`} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="flex items-center p-3 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-                  >
-                    <Paperclip size={18} className="text-gray-600 mr-3" />
-                    <span className="font-medium text-blue-700">{file.originalName}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <h2 className="text-2xl font-semibold text-blue-600 border-b-2 border-blue-200 pb-2 mb-6 flex items-center">
+              <BrainCircuit size={24} className="mr-3" />
+              Resumo do Exame (Análise por IA)
+            </h2>
+            <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
+              {/* A propriedade CSS 'whiteSpace' garante que as quebras de linha (\n) sejam renderizadas */}
+              <p className="text-gray-800" style={{ whiteSpace: 'pre-wrap' }}>
+                {screening.examSummary}
+              </p>
+            </div>
           </div>
         )}
 

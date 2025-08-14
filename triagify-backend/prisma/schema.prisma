@@ -58,6 +58,7 @@ model Screenings {
   doctor      User?      @relation("DoctorReviews", fields: [doctorId], references: [id], onDelete: SetNull)
   answers     Answer[]
   examFiles   ExamFile[]
+  examSummary String?
 }
 
 model Question {

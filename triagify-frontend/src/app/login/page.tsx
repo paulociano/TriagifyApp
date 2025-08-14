@@ -113,7 +113,7 @@ export default function LoginPage() {
 
                     <div className="flex items-center justify-between">
                         <div className="text-sm">
-                            <a href="/forgot-password" className="font-medium text-[#02bca5] hover:text-[#02bca5]/80">
+                            <a href="/forgot-passwordgit " className="font-medium text-[#02bca5] hover:text-[#02bca5]/80">
                                 Esqueceu a sua senha?
                             </a>
                         </div>
