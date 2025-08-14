@@ -1,0 +1,30 @@
+# Definição dos nossos serviços (containers)
+services:
+  # O nome do nosso serviço de banco de dados
+  db:
+    # A imagem oficial do PostgreSQL que queremos usar
+    image: postgres:15-alpine
+    # Reinicia o container automaticamente se ele falhar
+    restart: always
+    # Nome do container para fácil identificação
+    container_name: triagify-db
+    # Mapeamento de portas: A porta 5432 do container será acessível
+    # através da porta 5432 do seu computador (host)
+    ports:
+      - "5432:5432"
+    # Variáveis de ambiente para configurar o PostgreSQL
+    environment:
+      # Define o utilizador super-administrador (pode manter 'postgres')
+      POSTGRES_USER: postgres
+      # Define a senha para este utilizador. GUARDE ESTA SENHA!
+      POSTGRES_PASSWORD: admin
+      # Cria automaticamente uma base de dados com este nome ao iniciar
+      POSTGRES_DB: triagify
+    # Volumes para persistência de dados
+    # Isto garante que os seus dados não se perdem se o container for removido
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+# Definição dos volumes nomeados
+volumes:
+  postgres_data:

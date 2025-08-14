@@ -1,0 +1,92 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+model User {
+  id                    String          @id @default(uuid())
+  email                 String          @unique
+  fullName              String
+  password              String
+  role                  Role            @default(PATIENT)
+  specialty             String?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  passwordResetToken    String?         @unique // Token para redefinir a senha
+  passwordResetExpires  DateTime?               // Data de expiração do token
+  screeningsAsPatient   Screenings[]    @relation("PatientScreenings")
+  reviewsAsDoctor       Screenings[]    @relation("DoctorReviews")
+  customQuestions       Question[]      @relation("DoctorQuestions")
+  patientsAsDoctor      DoctorPatient[] @relation("DoctorToPatient")
+  doctorsAsPatient      DoctorPatient[] @relation("PatientToDoctor")
+}
+
+model DoctorPatient {
+  doctorId   String
+  patientId  String
+  assignedAt DateTime @default(now())
+  assignedBy String
+
+  doctor  User @relation("DoctorToPatient", fields: [doctorId], references: [id], onDelete: Cascade)
+  patient User @relation("PatientToDoctor", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@id([doctorId, patientId])
+}
+
+model Screenings {
+  id          String     @id @default(uuid())
+  status      String     @default("PENDING")
+  doctorNotes String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  patientId   String
+  patient     User       @relation("PatientScreenings", fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId    String?
+  doctor      User?      @relation("DoctorReviews", fields: [doctorId], references: [id], onDelete: SetNull)
+  answers     Answer[]
+  examFiles   ExamFile[]
+}
+
+model Question {
+  id        String   @id @default(uuid())
+  text      String   @unique
+  category  String
+  type      String
+  options   String[]
+  answers   Answer[]
+  creatorId String?
+  creator   User?    @relation("DoctorQuestions", fields: [creatorId], references: [id], onDelete: Cascade)
+}
+
+model Answer {
+  id          String     @id @default(uuid())
+  value       String
+  screeningId String
+  screening   Screenings @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  @@unique([screeningId, questionId])
+}
+
+model ExamFile {
+  id           String     @id @default(uuid())
+  originalName String
+  filePath     String
+  fileType     String
+  createdAt    DateTime   @default(now())
+  screeningId  String
+  screening    Screenings @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+}
